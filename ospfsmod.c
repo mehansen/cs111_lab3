@@ -452,8 +452,10 @@ ospfs_dir_readdir(struct file *filp, void *dirent, filldir_t filldir)
 		 * the loop.  For now we do this all the time.
 		 *
 		 * EXERCISE: Your code here */
-		r = 1;		/* Fix me! */
-		break;		/* Fix me! */
+		if ((f_pos - 2) >= (dir_oi->oi_size * OSPFS_DIRENTRY_SIZE)) {
+			r = 1;		/* Fix me! */
+			break;		/* Fix me! */
+		}
 
 		/* Get a pointer to the next entry (od) in the directory.
 		 * The file system interprets the contents of a
@@ -476,6 +478,24 @@ ospfs_dir_readdir(struct file *filp, void *dirent, filldir_t filldir)
 		 */
 
 		/* EXERCISE: Your code here */
+
+		// getting the next entry and assigning it to od
+		od = ospfs_inode_data(dir_oi, (f_pos-2)*OSPFS_DIRENTRY_SIZE);
+		// getting the od's inode
+		entry_oi = ospfs_inode(od->od_ino);
+
+		uint32_t type = entry_oi->oi_ftype;
+		if (type == OSPFS_FTYPE_REG) {
+			ok_so_far = filldir(dirent, od->od_name, strlen(od->od_name), f_pos, od->od_ino, DT_REG);
+		} else if (type == OSPFS_FTYPE_DIR) {
+			ok_so_far = filldir(dirent, od->od_name, strlen(od->od_name), f_pos, od->od_ino, DT_DIR);
+		} else if (type == OSPFS_FTYPE_SYMLINK) {
+			ok_so_far = filldir(dirent, od->od_name, strlen(od->od_name), f_pos, od->od_ino, DT_LNK);
+		}
+		if (ok_so_far >= 0) {
+			++f_pos;
+		}
+
 	}
 
 	// Save the file position and return!
@@ -553,6 +573,18 @@ static uint32_t
 allocate_block(void)
 {
 	/* EXERCISE: Your code here */
+	uint32_t upper_bound = ospfs_super->os_nblocks;
+	void* free_block = ospfs_block(OSPFS_FREEMAP_BLK);
+	int current_pos = 0;
+
+	while (current_pos < upper_bound) {
+		if (bitvector_test(free_block, current_pos) == 1) {
+			bitvector_clear(free_block, current_pos);
+			return current_pos;
+		}
+		++current_pos;
+	}
+
 	return 0;
 }
 
@@ -572,6 +604,10 @@ static void
 free_block(uint32_t blockno)
 {
 	/* EXERCISE: Your code here */
+	uint32_t upper_bound = ospfs_super->os_nblocks;
+	void* free_block = ospfs_block(OSPFS_FREEMAP_BLK);
+	if ((blockno < upper_bound) && (blockno > 0))
+		bitvector_set(free_block, blockno);
 }
 
 
@@ -608,6 +644,8 @@ static int32_t
 indir2_index(uint32_t b)
 {
 	// Your code here.
+	if (b > (OSPFS_NDIRECT + OSPFS_NINDIRECT - 1))
+		return 0;
 	return -1;
 }
 
@@ -627,6 +665,10 @@ static int32_t
 indir_index(uint32_t b)
 {
 	// Your code here.
+	if (b > (OSPFS_NDIRECT + OSPFS_NINDIRECT -1))
+		return (b - OSPFS_NDIRECT - OSPFS_NINDIRECT)/OSPFS_NINDIRECT;
+	else if (b > OSPFS_NDIRECT - 1)
+		return 0;
 	return -1;
 }
 
@@ -644,7 +686,10 @@ static int32_t
 direct_index(uint32_t b)
 {
 	// Your code here.
-	return -1;
+	if (b > (OSPFS_NDIRECT - 1))
+		return (b - OSPFS_NDIRECT) % OSPFS_NINDIRECT;
+	else
+		return b;
 }
 
 
@@ -834,6 +879,7 @@ ospfs_notify_change(struct dentry *dentry, struct iattr *attr)
 //   when you're done.
 //
 //   EXERCISE: Complete this function.
+//   JUSTIN: COMPLETED THIS SHIEEEEEET
 
 static ssize_t
 ospfs_read(struct file *filp, char __user *buffer, size_t count, loff_t *f_pos)
@@ -845,6 +891,10 @@ ospfs_read(struct file *filp, char __user *buffer, size_t count, loff_t *f_pos)
 	// Make sure we don't read past the end of the file!
 	// Change 'count' so we never read past the end of the file.
 	/* EXERCISE: Your code here */
+	if (*f_pos + count > oi->oi_size) {
+		count = oi->oi_size - *f_pos;
+	}
+	// end of justin's code
 
 	// Copy the data to user block by block
 	while (amount < count && retval >= 0) {
@@ -865,8 +915,22 @@ ospfs_read(struct file *filp, char __user *buffer, size_t count, loff_t *f_pos)
 		// into user space.
 		// Use variable 'n' to track number of bytes moved.
 		/* EXERCISE: Your code here */
-		retval = -EIO; // Replace these lines
-		goto done;
+		/*retval = -EIO; // Replace these lines
+		goto done;*/
+
+		uint32_t data_offset = *f_pos & OSPFS_BLKSIZE;
+		n = OSPFS_BLKSIZE - data_offset;
+		if (n > count - amount) {
+			n = count - amount;
+		}
+
+		retval = copy_to_user(buffer, data, n);
+
+		// copy_to_user() will return a negative value if something is wrong.
+		if (retval < 0) {
+			retval = -EIO;
+			goto done;
+		}
 
 		buffer += n;
 		amount += n;
