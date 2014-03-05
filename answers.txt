@@ -9,13 +9,13 @@
 # If you have any other information you'd like us to know, please add it at the end of the file.
 
 # Partner 1
-Name: 
-Student ID: 
-Email: 
+Name: Merethe Hansen
+Student ID: 203 947 594
+Email: merethe@ucla.edu
 
-# Partner 2 (if you're working in a team)
-Name: 
-Student ID: 
-Email: 
+# Partner 2
+Name: Won Kyu Lee
+Student ID: 904 083 134
+Email: wlee89@gmail.com
 
 # Add any other information you'd like us to know below this line.
