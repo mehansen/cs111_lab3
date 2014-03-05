@@ -734,7 +734,90 @@ add_block(ospfs_inode_t *oi)
 	uint32_t *allocated[2] = { 0, 0 };
 
 	/* EXERCISE: Your code here */
-	return -EIO; // Replace this line
+	// return -EIO; // Replace this line
+	if (indir2_index(n) == 0) {
+		// array to hold the indirect2 block*/
+		uint32_t* is_indir2;
+
+		// check to see if indirect2 is already in effect
+		if (oi->oi_indirect2 == NULL) {
+			// instantiate the new indirect2 block of memory
+			if ((allocated[0] = allocate_block()) == 0) {
+				return -ENOSPC;
+			}
+			// set indirect2 pointer to the new memory
+			oi->oi_indirect2 = allocated[0];
+			is_indir2 = ospfs_block(allocated[0]);
+			memset(is_indir2, 0, OSPFS_BLKSIZE);
+		} else
+			is_indir2 = ospfs_block(oi->oi_indirect2);
+
+		// get the offset of indir2 block
+		uint32_t offset_indir2 = (indir_index(n) - 1);
+
+		if (is_indir2[offset_indir2] == NULL) {
+			// check to see if block is available
+			if((allocated[1] = allocate_block()) == 0) {
+				// free previously allocated block since fail
+				if (allocated[0] != 0) {
+					free_block(allocated[0]);
+					// set oi_indirect2 back to NULL
+					oi->oi_indirect2 = NULL;
+				}
+				return -ENOSPC;
+			}
+			is_indir2[offset_indir2] = allocated[1];
+		}
+
+		// array to hold indirect block
+		uint32_t* is_indir = ospfs_block(is_indir2[offset_indir2]);
+		// get the offset of indir block
+		uint32_t offset_indir = direct_index(n);
+		if ((is_indir[offset_indir] = allocate_block()) == 0) {
+			if (allocated[0] != 0) {
+				free_block(allocated[0]);
+				oi->oi_indirect2 = NULL;
+			}
+			if (allocated[1] != 0) {
+				free_block(allocated[1]);
+				is_indir2[offset_indir] = NULL;
+			}
+			return -ENOSPC;
+		}
+		oi->oi_size = (n+1)*OSPFS_BLKSIZE;
+		return 0;
+	} else if (indir_index(n) == 0) {
+		// same routine as before except this time
+		// we don't have an algorithm for indirect 2
+		// (obvious reasons)
+		uint32_t* is_indir;
+		if (oi->oi_indirect == NULL) {
+			if ((allocated[0] = allocate_block()) == 0)
+				return -ENOSPC;
+			oi->oi_indirect = allocated[0];
+			is_indir = ospfs_block(allocated[0]);
+			memset(is_indir, 0, OSPFS_BLKSIZE);
+		} else
+			is_indir = ospfs_block(oi->oi_indirect);
+		uint32_t offset_indir = direct_index(n);
+		if ((is_indir[offset_indir] = allocate_block()) == 0) {
+			if (allocated[0] != 0) {
+				free_block(allocated[0]);
+				oi->oi_indirect = NULL;
+			}
+			return -ENOSPC;
+		}
+		oi->oi_size = (n+1)*OSPFS_BLKSIZE;
+		return 0;
+	} else {
+		if((oi->oi_direct[n] = allocate_block()) == 0)
+			return -ENOSPC;
+		else {
+			oi->oi_size = (n+1)*OSPFS_BLKSIZE;
+			return 0;
+		}
+	}
+	return -EIO;	
 }
 
 
@@ -767,7 +850,48 @@ remove_block(ospfs_inode_t *oi)
 	uint32_t n = ospfs_size2nblocks(oi->oi_size);
 
 	/* EXERCISE: Your code here */
-	return -EIO; // Replace this line
+	// return -EIO; // Replace this line
+		// n big enough to be in indir2
+	if (indir2_index(n) == 0) {
+		// see if oi_indirect2 points to NULL something is wrong
+		if (oi->oi_indirect2 == NULL)
+			return -EIO;
+		// get indir2 block and offset
+		uint32_t* is_indir2 = ospfs_block(oi->oi_indirect2);
+		uint32_t offset_indir2 = indir_index(n) - 1;
+		// get indir block and offset
+		uint32_t* is_indir = ospfs_block(is_indir2[offset_indir2]);
+		uint32_t offset_indir = direct_index(n);
+		// free the block and set to NULL
+		free_block(is_indir[offset_indir]);
+		is_indir[offset_indir] = NULL;
+		// handling if the freed block was the last block of indir or indir2
+		if (offset_indir == 0) {
+			is_indir2[offset_indir2] = NULL;
+			if (offset_indir2 == 0) {
+				oi->oi_indirect2 = NULL;
+			}
+		}
+	} else if (indir_index(n) == 0) {
+		// same logic as above but with 1 layer less
+		if (oi->oi_indirect == NULL)
+			return -EIO;
+		uint32_t* is_indir = ospfs_block(oi->oi_indirect);
+		uint32_t offset_indir = indir_index(n);
+		free_block(is_indir[offset_indir]);
+		is_indir[offset_indir] = NULL;
+		if (offset_indir == 0) {
+			oi->oi_indirect = NULL;
+		}
+	} else {
+		// same as above but another layer less
+		uint32_t offset_dir = direct_index(n);
+		free_block(oi->oi_direct[offset_dir]);
+		oi->oi_direct[offset_dir] = NULL;
+	}
+	// reducing the size of oi
+	oi->oi_size = (n-1) * OSPFS_BLKSIZE;
+	return 0;
 }
 
 
@@ -813,18 +937,41 @@ change_size(ospfs_inode_t *oi, uint32_t new_size)
 	uint32_t old_size = oi->oi_size;
 	int r = 0;
 
+	// we're growing
 	while (ospfs_size2nblocks(oi->oi_size) < ospfs_size2nblocks(new_size)) {
 	        /* EXERCISE: Your code here */
-		return -EIO; // Replace this line
+		// save the return status of add_block()
+		int status = add_block(oi);
+		// we ran out of space! shrink the block back to its original size
+		if (status == -ENOSPC) {
+			while (r > 0) {
+				remove_block(oi);
+				--r;
+			}
+			oi->oi_size = old_size;
+			return -ENOSPC;
+		} else 
+		// IO error, derp
+		if (status == -EIO) {
+			return -EIO;
+		}
+		// let my minion grow!!
+		++r;
 	}
+	// we're shrinking
 	while (ospfs_size2nblocks(oi->oi_size) > ospfs_size2nblocks(new_size)) {
 	        /* EXERCISE: Your code here */
-		return -EIO; // Replace this line
+		if (remove_block(oi) < 0) {
+			return -EIO;
+		}
 	}
 
 	/* EXERCISE: Make sure you update necessary file meta data
 	             and return the proper value. */
-	return -EIO; // Replace this line
+
+	// readjust the size in the file meta data
+	oi->oi_size = new_size;
+	return 0;
 }
 
 
@@ -918,7 +1065,7 @@ ospfs_read(struct file *filp, char __user *buffer, size_t count, loff_t *f_pos)
 		/*retval = -EIO; // Replace these lines
 		goto done;*/
 
-		uint32_t data_offset = *f_pos & OSPFS_BLKSIZE;
+		uint32_t data_offset = *f_pos % OSPFS_BLKSIZE;
 		n = OSPFS_BLKSIZE - data_offset;
 		if (n > count - amount) {
 			n = count - amount;
