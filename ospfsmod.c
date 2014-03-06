@@ -1066,16 +1066,16 @@ ospfs_read(struct file *filp, char __user *buffer, size_t count, loff_t *f_pos)
 		goto done;*/
 
 		uint32_t data_offset = *f_pos % OSPFS_BLKSIZE;
-		n = OSPFS_BLKSIZE - data_offset;
-		if (n > count - amount) {
-			n = count - amount;
+		n = OSPFS_BLKSIZE - data_offset;					 //plan to copy remainder of block
+		if (count + data_offset - amount <= OSPFS_BLKSIZE) { //if the amount left to copy < block size
+			n = count - amount;								 //plan to copy only the remainder of count
 		}
 
 		retval = copy_to_user(buffer, data, n);
 
 		// copy_to_user() will return a negative value if something is wrong.
 		if (retval < 0) {
-			retval = -EIO;
+			retval = -EFAULT;
 			goto done;
 		}
 
@@ -1328,7 +1328,7 @@ ospfs_link(struct dentry *src_dentry, struct inode *dir, struct dentry *dst_dent
 //   2. Find an empty inode.  Set the 'entry_ino' variable to its inode number.
 //   3. Initialize the directory entry and inode.
 //
-//   EXERCISE: Complete this function.
+//   EXERCISE: Complete this function. IN PROGRESS
 
 static int
 ospfs_create(struct inode *dir, struct dentry *dentry, int mode, struct nameidata *nd)
@@ -1336,6 +1336,18 @@ ospfs_create(struct inode *dir, struct dentry *dentry, int mode, struct nameidat
 	ospfs_inode_t *dir_oi = ospfs_inode(dir->i_ino);
 	uint32_t entry_ino = 0;
 	/* EXERCISE: Your code here. */
+	if(dentry->d_name.len > OSPFS_MAXNAMELEN)
+		return -ENAMETOOLONG;
+	if(find_direntry(dir_oi, dentry->d_name.name, dentry->d_name.len) != NULL)
+		return -EEXIST;
+
+	ospfs_direntry_t* blank_direntry = create_blank_direntry(dir_oi);
+	if(IS_ERR(blank_direntry))
+		return PTR_ERR(blank_direntry);
+
+	//find an empty inode
+
+
 	return -EINVAL; // Replace this line
 
 	/* Execute this code after your function has successfully created the

@@ -16,6 +16,6 @@ Email: merethe@ucla.edu
 # Partner 2
 Name: Won Kyu Lee
 Student ID: 904 083 134
-Email: wlee89@gmail.com
+Email: wlee89@ucla.edu
 
 # Add any other information you'd like us to know below this line.
