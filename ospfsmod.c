@@ -1116,11 +1116,8 @@ ospfs_write(struct file *filp, const char __user *buffer, size_t count, loff_t *
 	// Support files opened with the O_APPEND flag.  To detect O_APPEND,
 	// use struct file's f_flags field and the O_APPEND bit.
 	/* EXERCISE: Your code here */
-	if(filp->f_flags != O_APPEND) {
-		//maybe this should be
-		//if has O_APPEND, move f_pos to end of file
-		retval = -EIO;
-		goto done;
+	if(filp->f_flags == O_APPEND) {
+		*f_pos = oi->oi_size;
 	}
 
 	// If the user is writing past the end of the file, change the file's
@@ -1159,7 +1156,7 @@ ospfs_write(struct file *filp, const char __user *buffer, size_t count, loff_t *
 			n = count - amount;
 		}
 
-		retval = copy_from_user(data, buffer, n);
+		retval = copy_from_user(data[data_offset], buffer, n);
 
 		// copy_from_user() will return a negative value if something is wrong.
 		if (retval < 0) {
@@ -1231,7 +1228,7 @@ find_direntry(ospfs_inode_t *dir_oi, const char *name, int namelen)
 //
 //	The create_blank_direntry function should use this convention.
 //
-// EXERCISE: Write this function.
+// EXERCISE: Write this function. DONE
 
 static ospfs_direntry_t *
 create_blank_direntry(ospfs_inode_t *dir_oi)
@@ -1243,7 +1240,7 @@ create_blank_direntry(ospfs_inode_t *dir_oi)
 	//    Use ERR_PTR if this fails; otherwise, clear out all the directory
 	//    entries and return one of them.
 
-	/* EXERCISE: Your code here. */
+	/* EXERCISE: Your code here. DONE */
 
 	int entry_off = 0;
 	for (entry_off = 0; entry_off < dir_oi->oi_size; entry_off += OSPFS_DIRENTRY_SIZE) {
@@ -1252,8 +1249,21 @@ create_blank_direntry(ospfs_inode_t *dir_oi)
 			return od;
 	}
 	//add a block to the directory
-	
-	return ERR_PTR(-EINVAL); // Replace this line
+	uint32_t blocknum = add_block(dir_oi);
+	if(blocknum == 0) 
+		return ERR_PTR(-ENOSPC);
+
+	int retpos = entry_off;
+	for(; entry_off < dir_oi->oi_size; entry_off += OSPFS_DIRENTRY_SIZE) {
+		ospfs_direntry_t *od = ospfs_inode_data(dir_oi, entry_off);
+		od->od_ino = 0;
+		od->od_name[0] = NULL;
+	}
+
+	ospfs_direntry_t *od = ospfs_inode_data(dir_oi, retpos);
+	return od;
+
+	//return ERR_PTR(-EINVAL); // Replace this line
 }
 
 // ospfs_link(src_dentry, dir, dst_dentry
