@@ -1115,14 +1115,15 @@ ospfs_write(struct file *filp, const char __user *buffer, size_t count, loff_t *
 
 	// Support files opened with the O_APPEND flag.  To detect O_APPEND,
 	// use struct file's f_flags field and the O_APPEND bit.
-	/* EXERCISE: Your code here */
+	/* EXERCISE: Your code here  DONE */
+	//if append, put write position at end
 	if(filp->f_flags == O_APPEND) {
 		*f_pos = oi->oi_size;
 	}
 
 	// If the user is writing past the end of the file, change the file's
 	// size to accomodate the request.  (Use change_size().)
-	/* EXERCISE: Your code here */
+	/* EXERCISE: Your code here DONE */
 	//M: is f_pos the offset into the file? if no,
 	//M: I'm really confused about why we're comparing address + size > size
 	if (*f_pos + count > oi->oi_size) {
@@ -1150,13 +1151,16 @@ ospfs_write(struct file *filp, const char __user *buffer, size_t count, loff_t *
 		//retval = -EIO; // Replace these lines
 		//goto done;
 
+		//offset amount file pos is into the block
 		uint32_t data_offset = *f_pos % OSPFS_BLKSIZE;
-		n = OSPFS_BLKSIZE - data_offset;
-		if (n > count - amount) {
+		//set data so we start writing at file position
+		data = data + data_offset;
+		n = OSPFS_BLKSIZE - data_offset;	//amount to copy is the rest of the block
+		if (n > count - amount) {			//unless amount to copy doesn't take up whole rest of block
 			n = count - amount;
 		}
 
-		retval = copy_from_user(data[data_offset], buffer, n);
+		retval = copy_from_user(data, buffer, n);
 
 		// copy_from_user() will return a negative value if something is wrong.
 		if (retval < 0) {
@@ -1298,6 +1302,25 @@ create_blank_direntry(ospfs_inode_t *dir_oi)
 static int
 ospfs_link(struct dentry *src_dentry, struct inode *dir, struct dentry *dst_dentry) {
 	/* EXERCISE: Your code here. */
+	if(dst_dentry->d_name.len > OSPFS_MAXNAMELEN)
+		return -ENAMETOOLONG;
+	if(find_direntry(dir, dst_dentry->d_name.name, dst_dentry->d_name.len) != NULL)
+		return -EEXIST;
+
+	//create the file in dir
+	ospfs_inode_t *dir_oi = ospfs_inode(dir->i_ino);
+	ospfs_direntry_t *newdentry = create_blank_direntry(dir_oi);
+	if(IS_ERR(newdentry))			//ENOSPC if no room for new file
+		return PTR_ERR(newdentry);
+
+	//set the new file's attributes
+	newdentry->od_ino = src_dentry->d_inode->i_ino;
+	memcpy(newdentry->od_name, dst_dentry->d_name.name, dst_dentry->d_name.len);
+
+	//increase link count of source
+	ospfs_inode_t *src_oi = ospfs_inode(src_dentry->d_inode->i_ino);
+	src_oi->oi_nlink++;
+
 	return -EINVAL;
 }
 
@@ -1346,9 +1369,37 @@ ospfs_create(struct inode *dir, struct dentry *dentry, int mode, struct nameidat
 		return PTR_ERR(blank_direntry);
 
 	//find an empty inode
+	int i;
+	for(i = OSPFS_ROOT_INO + 1; i < ospfs_super->os_ninodes; i++) {
+		ospfs_inode_t *empty = ospfs_inode(i);
+		if(empty->oi_nlink == 0) {
+			entry_ino = i;
+			break;
+		}
+	}
+	//if no empty inode is found
+	if(entry_ino == 0)
+		return -ENOSPC;
 
+	//initialize directory entry attributes
+	blank_direntry->od_ino = entry_ino;
+	memcpy(blank_direntry->od_name, dentry->d_name.name, dentry->d_name.len);	//copy the name passed in
+	blank_direntry->od_name[dentry->d_name.len] = NULL;							//append with null
 
-	return -EINVAL; // Replace this line
+	//initialize inode and attributes
+	ospfs_inode_t *new_in = ospfs_inode(entry_ino);
+	new_in->oi_size = 0;
+	new_in->oi_ftype = OSPFS_FTYPE_REG;
+	new_in->oi_nlink = 1;
+	new_in->oi_mode = mode;
+	for(i = 0; i < OSPFS_NDIRECT; i++)
+		new_in->oi_direct[i] = 0;
+	new_in->oi_indirect = 0;
+	new_in->oi_indirect2 = 0;
+
+	//at this point a new file inode has been made and a direntry that corresponds to it
+
+	//return -EINVAL; // Replace this line
 
 	/* Execute this code after your function has successfully created the
 	   file.  Set entry_ino to the created file's inode number before
