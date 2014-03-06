@@ -1244,8 +1244,15 @@ create_blank_direntry(ospfs_inode_t *dir_oi)
 	//    entries and return one of them.
 
 	/* EXERCISE: Your code here. */
-	//given a directory inode, find a direntry where od_ino = 0 (EMPTY)
-	//else add block
+
+	int entry_off = 0;
+	for (entry_off = 0; entry_off < dir_oi->oi_size; entry_off += OSPFS_DIRENTRY_SIZE) {
+		ospfs_direntry_t *od = ospfs_inode_data(dir_oi, entry_off);
+		if(od->od_ino == 0)
+			return od;
+	}
+	//add a block to the directory
+	
 	return ERR_PTR(-EINVAL); // Replace this line
 }
 
