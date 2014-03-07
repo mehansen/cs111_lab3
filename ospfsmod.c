@@ -484,18 +484,19 @@ ospfs_dir_readdir(struct file *filp, void *dirent, filldir_t filldir)
 		// getting the od's inode
 		entry_oi = ospfs_inode(od->od_ino);
 
-		uint32_t type = entry_oi->oi_ftype;
-		if (type == OSPFS_FTYPE_REG) {
-			ok_so_far = filldir(dirent, od->od_name, strlen(od->od_name), f_pos, od->od_ino, DT_REG);
-		} else if (type == OSPFS_FTYPE_DIR) {
-			ok_so_far = filldir(dirent, od->od_name, strlen(od->od_name), f_pos, od->od_ino, DT_DIR);
-		} else if (type == OSPFS_FTYPE_SYMLINK) {
-			ok_so_far = filldir(dirent, od->od_name, strlen(od->od_name), f_pos, od->od_ino, DT_LNK);
+		if (!(entry_oi == NULL)) {
+			uint32_t type = entry_oi->oi_ftype;
+			if (type == OSPFS_FTYPE_REG) {
+				ok_so_far = filldir(dirent, od->od_name, strlen(od->od_name), f_pos, od->od_ino, DT_REG);
+			} else if (type == OSPFS_FTYPE_DIR) {
+				ok_so_far = filldir(dirent, od->od_name, strlen(od->od_name), f_pos, od->od_ino, DT_DIR);
+			} else if (type == OSPFS_FTYPE_SYMLINK) {
+				ok_so_far = filldir(dirent, od->od_name, strlen(od->od_name), f_pos, od->od_ino, DT_LNK);
+			}
+			if (ok_so_far >= 0) {
+				++f_pos;
+			}
 		}
-		if (ok_so_far >= 0) {
-			++f_pos;
-		}
-
 	}
 
 	// Save the file position and return!
